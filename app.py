@@ -1,61 +1,38 @@
-import pickle
-import pandas as pd
-import re
-import nltk
 from flask import Flask, request, jsonify
-from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
+import pickle
+import nltk
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-# Download NLTK resources
-nltk.download('stopwords')
-nltk.download('wordnet')
-
-# Load trained model and vectorizer
-with open("spam_model.pkl", "rb") as model_file:
-    model = pickle.load(model_file)
-
-with open("vectorizer.pkl", "rb") as vectorizer_file:
-    vectorizer = pickle.load(vectorizer_file)
-
-# Initialize Flask app
+# Initialize Flask App
 app = Flask(__name__)
 
-# Text Cleaning Function
-lemmatizer = WordNetLemmatizer()
+# Load trained model and vectorizer
+model = pickle.load(open("spam_model.pkl", "rb"))
+vectorizer = pickle.load(open("vectorizer.pkl", "rb"))
 
-def clean_text(text):
-    text = text.lower()  # Convert to lowercase
-    text = re.sub(r'\W', ' ', text)  # Remove special characters
-    text = re.sub(r'\s+', ' ', text).strip()  # Remove extra spaces
-    words = text.split()
-    words = [lemmatizer.lemmatize(word) for word in words if word not in stopwords.words('english')]  # Lemmatization
-    return ' '.join(words)
+@app.route("/", methods=["GET"])
+def home():
+    return "Spam Detection API is Running!", 200
 
-# Route for detecting spam messages
-@app.route('/predict', methods=['POST'])
+@app.route("/predict", methods=["POST"])
 def predict():
     try:
-        data = request.json
-        message = data['message']
+        data = request.get_json()
         
-        # Clean and preprocess the message
-        cleaned_message = clean_text(message)
+        # Check if 'message' key exists in request
+        if "message" not in data:
+            return jsonify({"error": "Missing 'message' key in request"}), 400
         
-        # Convert message to TF-IDF features
-        message_vec = vectorizer.transform([cleaned_message])
+        message = [data["message"]]
+        message_vectorized = vectorizer.transform(message)
+        prediction = model.predict(message_vectorized)
         
-        # Predict spam or ham
-        prediction = model.predict(message_vec)[0]
+        result = "Spam" if prediction[0] == 1 else "Ham"
         
-        # Return result
-        result = {'message': message, 'prediction': 'Spam' if prediction == 1 else 'Ham'}
-        return jsonify(result)
+        return jsonify({"message": message[0], "prediction": result})
 
     except Exception as e:
-        return jsonify({"error": str(e)})
+        return jsonify({"error": str(e)}), 500
 
-# Run the Flask app
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
-
+if __name__ == "__main__":
+    app.run(debug=True, host="0.0.0.0", port=8080)
